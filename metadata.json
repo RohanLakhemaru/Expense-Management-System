@@ -1,0 +1,5 @@
+{
+  "name": "Pinnacle Expense Manager (PEM)",
+  "description": "A robust expense tracking system featuring advanced forecasting algorithms (Holt's Linear Trend) and statistical anomaly detection (IQR) for financial auditing.",
+  "requestFramePermissions": []
+}

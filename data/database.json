@@ -1,0 +1,21 @@
+{
+  "users": [
+    {
+      "id": "user_1",
+      "username": "student_admin",
+      "email": "admin@college.edu"
+    }
+  ],
+  "categories": [
+    { "id": "cat_1", "name": "Food & Dining", "budgetLimit": 15000, "type": "expense" },
+    { "id": "cat_2", "name": "Transportation", "budgetLimit": 5000, "type": "expense" },
+    { "id": "cat_3", "name": "Rent & Housing", "budgetLimit": 25000, "type": "expense" },
+    { "id": "cat_4", "name": "Entertainment", "budgetLimit": 8000, "type": "expense" },
+    { "id": "cat_5", "name": "Utilities", "budgetLimit": 4000, "type": "expense" },
+    { "id": "cat_6", "name": "Education", "budgetLimit": 10000, "type": "expense" },
+    { "id": "inc_1", "name": "Salary", "budgetLimit": 0, "type": "income" },
+    { "id": "inc_2", "name": "Freelance", "budgetLimit": 0, "type": "income" }
+  ],
+  "transactions": [],
+  "audit_logs": []
+}
