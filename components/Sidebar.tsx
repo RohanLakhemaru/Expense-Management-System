@@ -7,10 +7,17 @@ import {
   ExclamationTriangleIcon,
   TagIcon,
   BellIcon,
-  CalendarDaysIcon
+  CalendarDaysIcon,
+  ArrowRightOnRectangleIcon
 } from '@heroicons/react/24/outline';
+import { User } from '../types';
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  onLogout: () => void;
+  currentUser: User | null;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onLogout, currentUser }) => {
   const menuItems = [
     { path: '/', label: 'Dashboard', icon: HomeIcon, end: true },
     { path: '/add', label: 'Transactions', icon: PlusCircleIcon, end: false },
@@ -48,12 +55,23 @@ export const Sidebar: React.FC = () => {
         })}
       </nav>
       <div className="p-4 border-t border-slate-800">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center font-bold">U</div>
-          <div>
-            <p className="text-sm font-medium">Student Admin</p>
-            <p className="text-xs text-slate-500">PHP/MySQL Mode</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center font-bold">
+              {currentUser?.username?.charAt(0).toUpperCase() || 'U'}
+            </div>
+            <div>
+              <p className="text-sm font-medium">{currentUser?.username || 'Student Admin'}</p>
+              <p className="text-xs text-slate-500 truncate max-w-[100px]">{currentUser?.email || 'PHP/MySQL Mode'}</p>
+            </div>
           </div>
+          <button 
+            onClick={onLogout}
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            title="Logout"
+          >
+            <ArrowRightOnRectangleIcon className="w-5 h-5" />
+          </button>
         </div>
       </div>
     </div>

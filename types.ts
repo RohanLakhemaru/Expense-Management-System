@@ -4,10 +4,12 @@ export interface User {
   id: string;
   username: string;
   email: string;
+  password?: string; // Added for local auth
 }
 
 export interface Category {
   id: string;
+  userId?: string; // Added for multi-user support
   name: string;
   budgetLimit: number;
   type: TransactionType;
@@ -17,10 +19,10 @@ export interface Expense {
   id: string;
   userId: string;
   categoryId: string;
-  date: string;
+  date: string; // ISO Date string
   amount: number;
   description: string;
-  receiptPath?: string;
+  receiptPath?: string; // Simulated path
   createdAt: string;
   type: TransactionType;
 }
@@ -35,14 +37,14 @@ export interface Budget {
 export interface AuditLog {
   id: string;
   expenseId: string;
-  riskScore: number;
+  riskScore: number; // 1-10
   flagReason: string;
   flagDate: string;
   details: string;
 }
 
 export interface MonthlyAggregate {
-  month: string;
+  month: string; // YYYY-MM
   total: number;
 }
 

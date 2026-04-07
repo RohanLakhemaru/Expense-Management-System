@@ -1,7 +1,10 @@
 import { Category, Expense, AuditLog, User, TransactionType, Notification } from '../types';
 import { detectAnomaly, runSequentialAudit } from './algorithms';
 
-const API_URL = 'http://localhost/expense-management-v2/index.php'; 
+const API_URL = 'http://localhost/Expense-Management-System/index.php';
+const DEFAULT_FETCH_OPTIONS: RequestInit = {
+  credentials: 'include'
+};
 
 interface DatabaseSchema {
   users: User[];
@@ -19,6 +22,7 @@ class PEMDatabase {
   };
   
   private isConnected = false;
+  private currentUser: User | null = null;
 
   constructor() {}
 
@@ -28,9 +32,9 @@ class PEMDatabase {
           const timeoutId = setTimeout(() => controller.abort(), 3000);
 
           const [catsRes, txnsRes, auditsRes] = await Promise.all([
-              fetch(`${API_URL}?action=categories`, { signal: controller.signal }),
-              fetch(`${API_URL}?action=transactions`, { signal: controller.signal }),
-              fetch(`${API_URL}?action=audits`, { signal: controller.signal })
+              fetch(`${API_URL}?action=categories`, { ...DEFAULT_FETCH_OPTIONS, signal: controller.signal }),
+              fetch(`${API_URL}?action=transactions`, { ...DEFAULT_FETCH_OPTIONS, signal: controller.signal }),
+              fetch(`${API_URL}?action=audits`, { ...DEFAULT_FETCH_OPTIONS, signal: controller.signal })
           ]);
           clearTimeout(timeoutId);
 
@@ -99,6 +103,7 @@ class PEMDatabase {
 
     this.db.transactions.push(newTxn);
     await fetch(`${API_URL}?action=transactions`, {
+        ...DEFAULT_FETCH_OPTIONS,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newTxn)
@@ -133,6 +138,7 @@ class PEMDatabase {
       this.db.transactions[index] = updatedTxn;
       
       await fetch(`${API_URL}?action=transactions`, {
+          ...DEFAULT_FETCH_OPTIONS,
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedTxn)
@@ -162,7 +168,7 @@ class PEMDatabase {
     this.db.transactions = this.db.transactions.filter(item => item.id !== id);
     this.db.audit_logs = this.db.audit_logs.filter(item => item.expenseId !== id);
     
-    await fetch(`${API_URL}?action=transactions&id=${id}`, { method: 'DELETE' });
+    await fetch(`${API_URL}?action=transactions&id=${id}`, { ...DEFAULT_FETCH_OPTIONS, method: 'DELETE' });
   }
 
   async addCategory(name: string, type: TransactionType, budgetLimit: number): Promise<Category> {
@@ -179,6 +185,7 @@ class PEMDatabase {
     this.db.categories.push(newCat);
     
     await fetch(`${API_URL}?action=categories`, {
+        ...DEFAULT_FETCH_OPTIONS,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newCat)
@@ -196,6 +203,7 @@ class PEMDatabase {
     if (cat) {
         cat.budgetLimit = newLimit;
         await fetch(`${API_URL}?action=categories`, {
+            ...DEFAULT_FETCH_OPTIONS,
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(cat)
@@ -300,6 +308,70 @@ class PEMDatabase {
     console.log(`✅ Anomaly detection full rerun complete: ${total} checked, ${auditLogs.length} anomalies found`);
     return { processed: total, anomalies: auditLogs.length, auditLogs };
 
+  }
+
+  async login(username: string, password: string): Promise<void> {
+    const response = await fetch(`${API_URL}?action=login`, {
+      ...DEFAULT_FETCH_OPTIONS,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Login failed');
+    }
+
+    const user = await response.json();
+    // Clear previous user's data
+    this.db = {
+      users: [],
+      categories: [],
+      transactions: [],
+      audit_logs: []
+    };
+    this.currentUser = user;
+  }
+
+  async register(username: string, email: string, password: string): Promise<void> {
+    const response = await fetch(`${API_URL}?action=register`, {
+      ...DEFAULT_FETCH_OPTIONS,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Registration failed');
+    }
+
+    const user = await response.json();
+    // Clear any previous data and set new user
+    this.db = {
+      users: [],
+      categories: [],
+      transactions: [],
+      audit_logs: []
+    };
+    this.currentUser = user;
+  }
+
+  logout(): void {
+    this.currentUser = null;
+    this.db = {
+      users: [],
+      categories: [],
+      transactions: [],
+      audit_logs: []
+    };
+    // Optional: call backend to clear session
+    fetch(`${API_URL}?action=logout`, { ...DEFAULT_FETCH_OPTIONS, method: 'POST' }).catch(() => {});
+  }
+
+  getCurrentUser(): User | null {
+    return this.currentUser;
   }
 }
 

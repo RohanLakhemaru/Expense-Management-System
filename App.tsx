@@ -10,32 +10,55 @@ import { CategoryDetail } from './components/CategoryDetail';
 import { NotificationPage } from './components/NotificationPage';
 import { TransactionModal } from './components/TransactionModal';
 import { TransactionHistory } from './components/TransactionHistory';
+import { Auth } from './components/Auth';
 import { db } from './services/db';
+import { User } from './types';
 
 const App: React.FC = () => {
   const [selectedTxnId, setSelectedTxnId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
-  const [initError, setInitError] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   
+  // Helper to force re-render components when DB updates
   const [refreshKey, setRefreshKey] = useState(0);
   const handleDataUpdate = () => setRefreshKey(prev => prev + 1);
 
   useEffect(() => {
-    const initDB = async () => {
-        try {
-            await db.init();
-            setIsConnected(db.getStatus());
-            setLoading(false);
-        } catch (error) {
-            console.error("Failed to initialize database:", error);
-            setInitError(error instanceof Error ? error.message : "Unknown error");
-            setLoading(false);
+    const initApp = async () => {
+      try {
+        // Check if user is already authenticated
+        const response = await fetch('http://localhost/Expense-Management-System/index.php?action=currentUser', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const user = await response.json();
+          setCurrentUser(user);
+          // Load data for authenticated user
+          await db.init();
+          setIsConnected(db.getStatus());
+        } else {
+          // Not authenticated
         }
+      } catch (error) {
+        // API unavailable or not authenticated
+      }
+      setLoading(false);
     };
-    initDB();
+    initApp();
   }, []);
 
+  const handleAuthSuccess = () => {
+    setCurrentUser(db.getCurrentUser());
+    handleDataUpdate();
+  };
+
+  const handleLogout = () => {
+    db.logout();
+    setCurrentUser(null);
+  };
+
+  // Dynamic Header Title Logic
   const location = useLocation();
   const getHeaderTitle = () => {
     const path = location.pathname;
@@ -62,29 +85,15 @@ const App: React.FC = () => {
       );
   }
 
-  if (initError) {
-      return (
-          <div className="flex h-screen items-center justify-center bg-slate-50">
-              <div className="text-center">
-                  <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <h2 className="text-xl font-bold text-red-800">Database Connection Failed</h2>
-                  <p className="text-red-600 text-sm mb-4">{initError}</p>
-                  <p className="text-slate-500 text-sm">Testing mode: Only MySQL database is enabled. No fallback to local storage.</p>
-                  <button 
-                      onClick={() => window.location.reload()} 
-                      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                  >
-                      Retry Connection
-                  </button>
-              </div>
-          </div>
-      );
+  if (!currentUser) {
+    return <Auth onAuthSuccess={handleAuthSuccess} />;
   }
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
-      <Sidebar />
+      <Sidebar onLogout={handleLogout} currentUser={currentUser} />
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        {/* Header */}
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center shadow-sm z-10">
             <div>
                 <h2 className="text-xl font-bold text-slate-800 capitalize">
@@ -98,14 +107,15 @@ const App: React.FC = () => {
                         MySQL Connected
                     </span>
                 ) : (
-                    <span className="text-sm text-orange-700 bg-orange-50 px-3 py-1 rounded-full border border-orange-200 flex items-center shadow-sm" title="Server unreachable. Using local storage.">
+                    <span className="text-sm text-orange-700 bg-orange-50 px-3 py-1 rounded-full border border-orange-200 flex items-center shadow-sm" title="Server unreachable. Data not available.">
                         <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
-                        Local Demo Mode
+                        Offline Mode
                     </span>
                 )}
             </div>
         </header>
 
+        {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-8">
             <div className="max-w-6xl mx-auto">
                 <Routes>
