@@ -1,5 +1,7 @@
 import { CONFIG } from '../config.js';
 
+
+// Simple Holt's Linear Trend method for forecasting
 export const Forecaster = {
     predict(expenses) {
         const monthlyTotals = {};
@@ -70,6 +72,8 @@ export const Forecaster = {
     }
 };
 
+
+// Basic anomaly detection using frequency and amount outliers
 export const AnomalyDetector = {
     check(newExpense, allExpenses) {
         let isFlagged = false;

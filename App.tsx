@@ -75,7 +75,7 @@ const App: React.FC = () => {
 
   if (loading) {
       return (
-          <div className="flex h-screen items-center justify-center bg-slate-50">
+          <div className="flex h-screen items-center justify-center bg-slate-100">
               <div className="text-center">
                   <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                   <h2 className="text-xl font-bold text-slate-800">Initializing System...</h2>
@@ -90,7 +90,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-slate-100 overflow-hidden">
       <Sidebar onLogout={handleLogout} currentUser={currentUser} />
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Header */}
@@ -104,7 +104,7 @@ const App: React.FC = () => {
                 {isConnected ? (
                     <span className="text-sm text-green-700 bg-green-50 px-3 py-1 rounded-full border border-green-200 flex items-center shadow-sm">
                         <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
-                        MySQL Connected
+                        Online
                     </span>
                 ) : (
                     <span className="text-sm text-orange-700 bg-orange-50 px-3 py-1 rounded-full border border-orange-200 flex items-center shadow-sm" title="Server unreachable. Data not available.">
