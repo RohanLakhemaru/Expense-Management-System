@@ -1,5 +1,88 @@
-import { Expense, AuditLog, MonthlyAggregate, Category } from '../types';
+import { Expense, AuditLog, MonthlyAggregate, Category, CategoryForecastMap } from '../types';
 import { FORECAST_ALPHA, FORECAST_BETA, ANOMALY_IQR_MULTIPLIER, FREQUENCY_THRESHOLD, CURRENCY_SYMBOL } from '../constants';
+
+/**
+ * Smart Forecast - Only forecasts RECURRING, NON-DURABLE expenses
+ * Filters OUT:
+ * - Irregular expenses
+ * - Durable goods categories
+ * Groups by category and forecasts separately
+ */
+export const generateSmartForecast = (
+  expenses: Expense[],
+  categories: Category[] = []
+): CategoryForecastMap => {
+  // Build category map for quick lookup
+  const categoryMap = new Map(categories.map(c => [c.id, c]));
+
+  // Filter: Only include explicitly recurring expenses and exclude durable goods
+  const validExpenses = expenses.filter(e => {
+    const cat = categoryMap.get(e.categoryId);
+
+    // Only include explicit recurring transactions
+    if (e.expenseType !== 'recurring') {
+      return false;
+    }
+
+    // Exclude durable goods categories from forecasting
+    if (cat && cat.isDurable) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (validExpenses.length === 0) {
+    return {};
+  }
+
+  // Group expenses by category
+  const groupedByCategory: Record<string, Expense[]> = {};
+  validExpenses.forEach(e => {
+    if (!groupedByCategory[e.categoryId]) {
+      groupedByCategory[e.categoryId] = [];
+    }
+    groupedByCategory[e.categoryId].push(e);
+  });
+
+  // Forecast each category separately
+  const forecastByCategory: Record<string, MonthlyAggregate[]> = {};
+  
+  for (const [categoryId, categoryExpenses] of Object.entries(groupedByCategory)) {
+    const forecast = generateForecast(categoryExpenses);
+    if (forecast.length > 0) {
+      forecastByCategory[categoryId] = forecast;
+    }
+  }
+
+  return forecastByCategory;
+};
+
+/**
+ * Combine category forecasts into a total forecast for next months
+ */
+export const getCombinedForecast = (
+  categoryForecasts: Record<string, MonthlyAggregate[]>
+): MonthlyAggregate[] => {
+  const monthTotals: Record<string, number> = {};
+
+  for (const [categoryId, forecasts] of Object.entries(categoryForecasts)) {
+    forecasts.forEach(f => {
+      monthTotals[f.month] = (monthTotals[f.month] || 0) + f.total;
+    });
+  }
+
+  return Object.entries(monthTotals)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([month, total]) => ({
+      month,
+      total: Math.max(0, parseFloat(total.toFixed(2)))
+    }));
+};
+
+/**
+ * Original Forecast Function - applies Holt's exponential smoothing
+ */
 
 export const generateForecast = (expenses: Expense[]): MonthlyAggregate[] => {
   const monthlyTotals: Record<string, number> = {};

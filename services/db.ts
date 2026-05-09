@@ -1,7 +1,7 @@
-import { Category, Expense, AuditLog, User, TransactionType, Notification } from '../types';
-import { detectAnomaly, runSequentialAudit } from './algorithms';
+import { Category, Expense, AuditLog, User, TransactionType, Notification, SavingGoal, SavingProgress } from '../types';
+import { detectAnomaly, runSequentialAudit, generateSmartForecast, getCombinedForecast } from './algorithms';
 
-const API_URL = 'http://localhost/Expense-Management-System/index.php';
+const API_URL = 'http://localhost/NewManagementSystem/Expense-Management-System/index.php';
 const DEFAULT_FETCH_OPTIONS: RequestInit = {
   credentials: 'include'
 };
@@ -11,6 +11,8 @@ interface DatabaseSchema {
   categories: Category[];
   transactions: Expense[];
   audit_logs: AuditLog[];
+  saving_goals: SavingGoal[];
+  saving_progress: SavingProgress[];
 }
 
 class PEMDatabase {
@@ -18,7 +20,9 @@ class PEMDatabase {
       users: [],
       categories: [],
       transactions: [],
-      audit_logs: []
+      audit_logs: [],
+      saving_goals: [],
+      saving_progress: []
   };
   
   private isConnected = false;
@@ -29,31 +33,99 @@ class PEMDatabase {
   async init(): Promise<void> {
       try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 3000);
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-          const [catsRes, txnsRes, auditsRes] = await Promise.all([
+          const [catsRes, txnsRes, auditsRes, goalsRes, progressRes] = await Promise.all([
               fetch(`${API_URL}?action=categories`, { ...DEFAULT_FETCH_OPTIONS, signal: controller.signal }),
               fetch(`${API_URL}?action=transactions`, { ...DEFAULT_FETCH_OPTIONS, signal: controller.signal }),
-              fetch(`${API_URL}?action=audits`, { ...DEFAULT_FETCH_OPTIONS, signal: controller.signal })
+              fetch(`${API_URL}?action=audits`, { ...DEFAULT_FETCH_OPTIONS, signal: controller.signal }),
+              fetch(`${API_URL}?action=saving_goals`, { ...DEFAULT_FETCH_OPTIONS, signal: controller.signal }),
+              fetch(`${API_URL}?action=saving_progress`, { ...DEFAULT_FETCH_OPTIONS, signal: controller.signal })
           ]);
           clearTimeout(timeoutId);
 
-          if (!catsRes.ok || !txnsRes.ok || !auditsRes.ok) {
-              throw new Error("API endpoint returned error status");
+          // Log status codes - 401 means user not authenticated
+          console.log("📊 API Response Status:", {
+              categories: catsRes.status,
+              transactions: txnsRes.status,
+              audits: auditsRes.status,
+              goals: goalsRes.status,
+              progress: progressRes.status
+          });
+
+          // If any endpoint returns 401, user is not authenticated
+          if (catsRes.status === 401 || txnsRes.status === 401 || auditsRes.status === 401) {
+              console.error("❌ API returned 401 - Not authenticated");
+              this.isConnected = false;
+              throw new Error("User session expired - please login again");
           }
 
-          this.db.categories = await catsRes.json();
-          this.db.transactions = await txnsRes.json();
-          this.db.audit_logs = await auditsRes.json();
-          this.db.categories.forEach(c => c.budgetLimit = Number(c.budgetLimit));
+          // Try to parse responses, default to empty arrays if JSON parsing fails
+          try {
+              const catData = catsRes.ok ? await catsRes.json() : [];
+              console.log("✅ Categories fetched:", catData.length, "items");
+              this.db.categories = catData;
+          } catch (e) {
+              console.warn("⚠️ Failed to parse categories:", e);
+              this.db.categories = [];
+          }
+
+          try {
+              const txnData = txnsRes.ok ? await txnsRes.json() : [];
+              console.log("✅ Transactions fetched:", txnData.length, "items");
+              this.db.transactions = txnData;
+          } catch (e) {
+              console.warn("⚠️ Failed to parse transactions:", e);
+              this.db.transactions = [];
+          }
+
+          try {
+              const auditData = auditsRes.ok ? await auditsRes.json() : [];
+              console.log("✅ Audits fetched:", auditData.length, "items");
+              this.db.audit_logs = auditData;
+          } catch (e) {
+              console.warn("⚠️ Failed to parse audits:", e);
+              this.db.audit_logs = [];
+          }
+
+          try {
+              const goalsData = goalsRes.ok ? await goalsRes.json() : [];
+              console.log("✅ Saving goals fetched:", goalsData.length, "items");
+              this.db.saving_goals = goalsData;
+          } catch (e) {
+              console.warn("⚠️ Failed to parse goals:", e);
+              this.db.saving_goals = [];
+          }
+
+          try {
+              const progressData = progressRes.ok ? await progressRes.json() : [];
+              console.log("✅ Saving progress fetched:", progressData.length, "items");
+              this.db.saving_progress = progressData;
+          } catch (e) {
+              console.warn("⚠️ Failed to parse progress:", e);
+              this.db.saving_progress = [];
+          }
+          
+          this.db.categories.forEach(c => {
+            c.budgetLimit = Number(c.budgetLimit);
+            c.isDurable = Boolean(c.isDurable);
+          });
           this.db.transactions.forEach(t => t.amount = Number(t.amount));
           this.db.audit_logs.forEach(a => a.riskScore = Number(a.riskScore));
+          this.db.saving_goals.forEach(g => g.targetAmount = Number(g.targetAmount));
+          this.db.saving_progress.forEach(p => p.amountSaved = Number(p.amountSaved));
 
           this.isConnected = true;
-          console.log("✅ Connected to MySQL Database");
+          console.log("✅ Connected to MySQL Database - loaded", {
+              categories: this.db.categories.length,
+              transactions: this.db.transactions.length,
+              audits: this.db.audit_logs.length,
+              goals: this.db.saving_goals.length,
+              progress: this.db.saving_progress.length
+          });
 
       } catch (error) {
-          console.error("❌ MySQL API Unavailable. No fallback enabled for testing.", error);
+          console.error("❌ Database initialization failed:", error.message);
           this.isConnected = false;
           throw error;
       }
@@ -97,7 +169,7 @@ class PEMDatabase {
     const newTxn: Expense = {
       ...data,
       id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      userId: 'user_1',
+      userId: this.currentUser?.id || '',
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
     };
 
@@ -307,7 +379,119 @@ class PEMDatabase {
 
     console.log(`✅ Anomaly detection full rerun complete: ${total} checked, ${auditLogs.length} anomalies found`);
     return { processed: total, anomalies: auditLogs.length, auditLogs };
+  }
 
+  // === SAVING GOALS METHODS ===
+
+  getSavingGoals(): SavingGoal[] {
+    return this.db.saving_goals.sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
+  }
+
+  getSavingGoalById(id: string): SavingGoal | undefined {
+    return this.db.saving_goals.find(g => g.id === id);
+  }
+
+  getSavingProgress(goalId?: string): SavingProgress[] {
+    if (goalId) {
+      return this.db.saving_progress.filter(p => p.goalId === goalId).sort((a, b) => b.month.localeCompare(a.month));
+    }
+    return this.db.saving_progress.sort((a, b) => b.month.localeCompare(a.month));
+  }
+
+  async addSavingGoal(data: Omit<SavingGoal, 'id' | 'createdAt' | 'updatedAt'>): Promise<SavingGoal> {
+    if (!this.isConnected) {
+      throw new Error("MySQL not connected - cannot add saving goal");
+    }
+
+    const newGoal: SavingGoal = {
+      ...data,
+      id: `goal_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    this.db.saving_goals.push(newGoal);
+    await fetch(`${API_URL}?action=saving_goals`, {
+      ...DEFAULT_FETCH_OPTIONS,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newGoal)
+    });
+
+    return newGoal;
+  }
+
+  async updateSavingGoal(id: string, updates: Partial<SavingGoal>): Promise<void> {
+    if (!this.isConnected) {
+      throw new Error("MySQL not connected - cannot update saving goal");
+    }
+
+    const goal = this.db.saving_goals.find(g => g.id === id);
+    if (!goal) throw new Error("Saving goal not found");
+
+    const updated: SavingGoal = {
+      ...goal,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+
+    const index = this.db.saving_goals.findIndex(g => g.id === id);
+    this.db.saving_goals[index] = updated;
+
+    await fetch(`${API_URL}?action=saving_goals`, {
+      ...DEFAULT_FETCH_OPTIONS,
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated)
+    });
+  }
+
+  async deleteSavingGoal(id: string): Promise<void> {
+    if (!this.isConnected) {
+      throw new Error("MySQL not connected - cannot delete saving goal");
+    }
+
+    this.db.saving_goals = this.db.saving_goals.filter(g => g.id !== id);
+    this.db.saving_progress = this.db.saving_progress.filter(p => p.goalId !== id);
+
+    await fetch(`${API_URL}?action=saving_goals&id=${id}`, {
+      ...DEFAULT_FETCH_OPTIONS,
+      method: 'DELETE'
+    });
+  }
+
+  async addSavingProgress(goalId: string, month: string, amountSaved: number): Promise<SavingProgress> {
+    if (!this.isConnected) {
+      throw new Error("MySQL not connected - cannot add saving progress");
+    }
+
+    const newProgress: SavingProgress = {
+      id: `prog_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      goalId,
+      month,
+      amountSaved,
+      createdAt: new Date().toISOString()
+    };
+
+    this.db.saving_progress.push(newProgress);
+    await fetch(`${API_URL}?action=saving_progress`, {
+      ...DEFAULT_FETCH_OPTIONS,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newProgress)
+    });
+
+    return newProgress;
+  }
+
+  getSmartForecastByCategory() {
+    const expenses = this.getExpenses();
+    return generateSmartForecast(expenses, this.db.categories);
+  }
+
+  getCombinedSmartForecast() {
+    const forecastByCategory = this.getSmartForecastByCategory();
+    return getCombinedForecast(forecastByCategory);
   }
 
   async login(username: string, password: string): Promise<void> {
@@ -329,9 +513,12 @@ class PEMDatabase {
       users: [],
       categories: [],
       transactions: [],
-      audit_logs: []
+      audit_logs: [],
+      saving_goals: [],
+      saving_progress: []
     };
     this.currentUser = user;
+    this.isConnected = true;
   }
 
   async register(username: string, email: string, password: string): Promise<void> {
@@ -353,9 +540,12 @@ class PEMDatabase {
       users: [],
       categories: [],
       transactions: [],
-      audit_logs: []
+      audit_logs: [],
+      saving_goals: [],
+      saving_progress: []
     };
     this.currentUser = user;
+    this.isConnected = true;
   }
 
   logout(): void {
@@ -364,7 +554,9 @@ class PEMDatabase {
       users: [],
       categories: [],
       transactions: [],
-      audit_logs: []
+      audit_logs: [],
+      saving_goals: [],
+      saving_progress: []
     };
     // Optional: call backend to clear session
     fetch(`${API_URL}?action=logout`, { ...DEFAULT_FETCH_OPTIONS, method: 'POST' }).catch(() => {});
@@ -372,6 +564,27 @@ class PEMDatabase {
 
   getCurrentUser(): User | null {
     return this.currentUser;
+  }
+
+  async migrateCategories(): Promise<void> {
+    try {
+      const response = await fetch(`${API_URL}?action=migrate_categories`, {
+        ...DEFAULT_FETCH_OPTIONS,
+        method: 'GET'
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.status === 'success') {
+          console.log("✅ Categories migrated:", result.categories_created, "created");
+          // Reload categories
+          await this.init();
+        } else if (result.status === 'already_has_categories') {
+          console.log("ℹ️ User already has", result.count, "categories");
+        }
+      }
+    } catch (e) {
+      console.warn("⚠️ Migration failed:", e);
+    }
   }
 }
 

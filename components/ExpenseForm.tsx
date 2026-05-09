@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
-import { TransactionType } from '../types';
+import { TransactionType, ExpenseType } from '../types';
 import { CURRENCY_SYMBOL, BUDGET_WARNING_THRESHOLD } from '../constants';
 import { ArrowUpTrayIcon, CheckCircleIcon, ExclamationTriangleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
@@ -13,7 +13,8 @@ export const ExpenseForm: React.FC = () => {
     amount: '',
     categoryId: '',
     description: '',
-    receipt: null as File | null
+    receipt: null as File | null,
+    expenseType: 'recurring' as ExpenseType
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [budgetWarning, setBudgetWarning] = useState<string | null>(null);
@@ -67,7 +68,8 @@ export const ExpenseForm: React.FC = () => {
             categoryId: formData.categoryId,
             description: formData.description,
             receiptPath: formData.receipt ? URL.createObjectURL(formData.receipt) : undefined,
-            type: txnType
+            type: txnType,
+            expenseType: txnType === 'expense' ? formData.expenseType : undefined
         });
 
         // Check audit (only relevant for expenses)
@@ -84,7 +86,13 @@ export const ExpenseForm: React.FC = () => {
         }
         
         // Reset form
-        setFormData(prev => ({ ...prev, amount: '', description: '', receipt: null }));
+        setFormData(prev => ({ 
+          ...prev, 
+          amount: '', 
+          description: '', 
+          receipt: null,
+          expenseType: 'recurring'
+        }));
         setBudgetWarning(null);
     } catch (err) {
         setMessage({ type: 'error', text: 'Failed to save transaction.' });
@@ -161,6 +169,23 @@ export const ExpenseForm: React.FC = () => {
                 ))}
             </select>
         </div>
+
+        {txnType === 'expense' && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Expense Classification</label>
+            <select 
+              value={formData.expenseType}
+              onChange={e => setFormData({...formData, expenseType: e.target.value as ExpenseType})}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+            >
+              <option value="recurring">🔄 Recurring (Regular, repeating)</option>
+              <option value="irregular">📌 Irregular (One-time, occasional)</option>
+            </select>
+            <p className="text-xs text-slate-500 mt-1">
+              Help us understand your spending patterns for better forecasting
+            </p>
+          </div>
+        )}
 
         {budgetWarning && (
             <div className="flex items-center text-sm font-bold text-orange-600 bg-orange-50 p-3 rounded-lg border border-orange-100">

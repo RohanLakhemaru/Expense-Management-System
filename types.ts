@@ -1,4 +1,5 @@
 export type TransactionType = 'expense' | 'income';
+export type ExpenseType = 'recurring' | 'irregular';
 
 export interface User {
   id: string;
@@ -13,6 +14,7 @@ export interface Category {
   name: string;
   budgetLimit: number;
   type: TransactionType;
+  isDurable?: boolean; // NEW: Flag for durable goods (appliances, electronics, etc)
 }
 
 export interface Expense {
@@ -25,6 +27,7 @@ export interface Expense {
   receiptPath?: string; // Simulated path
   createdAt: string;
   type: TransactionType;
+  expenseType?: ExpenseType; // NEW: 'recurring' or 'irregular'
 }
 
 export interface Budget {
@@ -48,6 +51,8 @@ export interface MonthlyAggregate {
   total: number;
 }
 
+export type CategoryForecastMap = Record<string, MonthlyAggregate[]>;
+
 export interface ForecastData {
   month: string;
   predictedAmount: number;
@@ -56,8 +61,37 @@ export interface ForecastData {
 
 export interface Notification {
   id: string;
-  type: 'critical' | 'warning' | 'anomaly';
+  type: 'critical' | 'warning' | 'anomaly' | 'saving_goal';
   title: string;
   message: string;
   date: string;
+}
+
+export interface SavingGoal {
+  id: string;
+  userId: string;
+  goalName: string;
+  targetAmount: number;
+  deadline: string; // ISO Date string
+  type: 'purchase' | 'general'; // Type of saving goal
+  status: 'active' | 'completed' | 'failed'; // Status
+  createdAt: string;
+  updatedAt: string;
+  notes?: string;
+}
+
+export interface SavingProgress {
+  id: string;
+  goalId: string;
+  month: string; // YYYY-MM
+  amountSaved: number;
+  createdAt: string;
+}
+
+export interface SmartSuggestion {
+  recommendedMonthlyAmount: number;
+  recommendedDeadline: string;
+  feasibilityScore: number; // 0-100
+  monthlyCapacity: number;
+  reasoning: string;
 }

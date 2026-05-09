@@ -7,7 +7,7 @@ import { CURRENCY_SYMBOL } from '../constants';
 export const CategoryManager: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>(db.getCategories());
   const [isAdding, setIsAdding] = useState(false);
-  const [newCat, setNewCat] = useState({ name: '', type: 'expense' as TransactionType, limit: '' });
+  const [newCat, setNewCat] = useState({ name: '', type: 'expense' as TransactionType, limit: '', isDurable: false });
 
   const refresh = () => setCategories([...db.getCategories()]);
 
@@ -15,7 +15,7 @@ export const CategoryManager: React.FC = () => {
       e.preventDefault();
       if (newCat.name) {
           await db.addCategory(newCat.name, newCat.type, parseFloat(newCat.limit) || 0);
-          setNewCat({ name: '', type: 'expense', limit: '' });
+          setNewCat({ name: '', type: 'expense', limit: '', isDurable: false });
           setIsAdding(false);
           refresh();
       }
@@ -46,30 +46,33 @@ export const CategoryManager: React.FC = () => {
         {isAdding && (
             <div className="bg-white p-6 rounded-xl border border-blue-200 shadow-sm animate-in fade-in slide-in-from-top-4">
                 <h3 className="font-bold text-slate-800 mb-4">Create New Category</h3>
-                <form onSubmit={handleAdd} className="flex gap-4 items-end">
-                    <div className="flex-1">
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Name</label>
-                        <input 
-                            type="text" 
-                            required 
-                            className="w-full px-4 py-2 border rounded-lg"
-                            placeholder="e.g. Gym, Freelance..."
-                            value={newCat.name}
-                            onChange={e => setNewCat({...newCat, name: e.target.value})}
-                        />
+                <form onSubmit={handleAdd} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Name</label>
+                            <input 
+                                type="text" 
+                                required 
+                                className="w-full px-4 py-2 border rounded-lg"
+                                placeholder="e.g. Gym, Freelance..."
+                                value={newCat.name}
+                                onChange={e => setNewCat({...newCat, name: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Type</label>
+                             <select 
+                                className="w-full px-4 py-2 border rounded-lg"
+                                value={newCat.type}
+                                onChange={e => setNewCat({...newCat, type: e.target.value as TransactionType})}
+                             >
+                                 <option value="expense">Expense</option>
+                                 <option value="income">Income</option>
+                             </select>
+                        </div>
                     </div>
-                    <div className="w-40">
-                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Type</label>
-                         <select 
-                            className="w-full px-4 py-2 border rounded-lg"
-                            value={newCat.type}
-                            onChange={e => setNewCat({...newCat, type: e.target.value as TransactionType})}
-                         >
-                             <option value="expense">Expense</option>
-                             <option value="income">Income</option>
-                         </select>
-                    </div>
-                    <div className="w-40">
+                    
+                    <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Budget Limit</label>
                         <input 
                             type="number" 
@@ -80,9 +83,34 @@ export const CategoryManager: React.FC = () => {
                             disabled={newCat.type === 'income'}
                         />
                     </div>
-                    <button type="submit" className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700">
-                        Save
-                    </button>
+
+                    {newCat.type === 'expense' && (
+                        <div className="flex items-center space-x-2">
+                            <input 
+                                type="checkbox"
+                                id="isDurable"
+                                checked={newCat.isDurable}
+                                onChange={e => setNewCat({...newCat, isDurable: e.target.checked})}
+                                className="w-4 h-4 text-blue-600 rounded"
+                            />
+                            <label htmlFor="isDurable" className="text-sm text-slate-700">
+                                Mark as durable goods (appliances, electronics, furniture, etc.)
+                            </label>
+                        </div>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                        <button type="submit" className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700">
+                            Save
+                        </button>
+                        <button 
+                            type="button" 
+                            onClick={() => setIsAdding(false)}
+                            className="bg-slate-200 text-slate-700 px-6 py-2 rounded-lg font-bold hover:bg-slate-300"
+                        >
+                            Cancel
+                        </button>
+                    </div>
                 </form>
             </div>
         )}

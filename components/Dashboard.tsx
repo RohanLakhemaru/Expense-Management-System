@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { db } from '../services/db';
-import { generateForecast } from '../services/algorithms';
+import { generateSmartForecast, getCombinedForecast } from '../services/algorithms';
 import { CURRENCY_SYMBOL } from '../constants';
 import { 
     ArrowTrendingUpIcon, 
@@ -12,7 +12,7 @@ import {
     ArrowDownTrayIcon,
     ShieldCheckIcon
 } from '@heroicons/react/24/solid';
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, AreaChart, Area } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
 
 export const Dashboard: React.FC = () => {
   const allTxns = db.getAllTransactions();
@@ -20,9 +20,90 @@ export const Dashboard: React.FC = () => {
   const incomes = db.getIncomes();
   const categories = db.getCategories();
   
-  // Calculate Forecast (Expenses Only)
-  const forecastData = useMemo(() => generateForecast(expenses), [expenses]);
-  
+  // Calculate Smart Forecast (Recurring, Non-Durable Expenses Only)
+  const categoryForecasts = useMemo(() => generateSmartForecast(expenses, categories), [expenses, categories]);
+
+  const categoryNameById = useMemo(() => {
+    return new Map(categories.filter(c => c.type === 'expense').map(c => [c.id, c.name]));
+  }, [categories]);
+
+  const categoryChartData = useMemo(() => {
+    const categoryMap = new Map(categories.map(c => [c.id, c]));
+    const validExpenses = expenses.filter(e => {
+      const cat = categoryMap.get(e.categoryId);
+      return e.expenseType === 'recurring' && !cat?.isDurable;
+    });
+
+    const actualTotals: Record<string, Record<string, number>> = {};
+    const categoryIds = new Set<string>(Object.keys(categoryForecasts));
+
+    validExpenses.forEach(e => {
+      const month = e.date.slice(0, 7);
+      if (!actualTotals[month]) actualTotals[month] = {};
+      actualTotals[month][e.categoryId] = (actualTotals[month][e.categoryId] || 0) + e.amount;
+      categoryIds.add(e.categoryId);
+    });
+
+    const actualMonths = Object.keys(actualTotals).sort();
+    const recentActualMonths = actualMonths.slice(-6);
+    const forecastMonths = Array.from(
+      new Set(Object.values(categoryForecasts).flatMap(series => series.map(item => item.month)))
+    ).sort();
+    const allMonths = [...new Set([...recentActualMonths, ...forecastMonths])];
+
+    return allMonths.map(month => {
+      const row: Record<string, any> = { month };
+      categoryIds.forEach(catId => {
+        const categoryName = categoryNameById.get(catId) || catId;
+        const actualValue = actualTotals[month]?.[catId] || 0;
+        const forecastPoint = categoryForecasts[catId]?.find(item => item.month === month);
+        row[categoryName] = forecastPoint?.total ?? actualValue;
+      });
+      return row;
+    });
+  }, [expenses, categories, categoryForecasts, categoryNameById]);
+
+  const activeSavingPlans = useMemo(() => {
+    const goals = db.getSavingGoals().filter(goal => goal.status === 'active');
+    return goals.map(goal => {
+      const totalSaved = db.getSavingProgress(goal.id).reduce((sum, progress) => sum + progress.amountSaved, 0);
+      return {
+        ...goal,
+        totalSaved,
+        percentComplete: Math.min(100, goal.targetAmount > 0 ? (totalSaved / goal.targetAmount) * 100 : 0),
+        formattedDeadline: new Date(goal.deadline).toLocaleDateString()
+      };
+    });
+  }, []);
+
+  const chartData = categoryChartData;
+
+  const categoryLineKeys = useMemo(() => {
+    const keys = new Set<string>();
+    chartData.forEach(row => {
+      Object.keys(row).forEach(key => {
+        if (key !== 'month') keys.add(key);
+      });
+    });
+    return Array.from(keys);
+  }, [chartData]);
+
+  const limitedCategoryKeys = useMemo(() => {
+    if (categoryLineKeys.length <= 6) return categoryLineKeys;
+
+    const totals = new Map<string, number>();
+    chartData.forEach(row => {
+      categoryLineKeys.forEach(key => {
+        totals.set(key, (totals.get(key) || 0) + (row[key] || 0));
+      });
+    });
+
+    return categoryLineKeys
+      .slice()
+      .sort((a, b) => (totals.get(b) || 0) - (totals.get(a) || 0))
+      .slice(0, 6);
+  }, [chartData, categoryLineKeys]);
+
   // Current Month Stats
   const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
   const currentMonthExpenses = expenses.filter(e => e.date.startsWith(currentMonthStr));
@@ -61,47 +142,7 @@ export const Dashboard: React.FC = () => {
   // Identify Alerts
   const alerts = budgetStatus.filter(b => b.isOver || b.percent >= 85);
 
-  // Prepare chart data (History + 2 months forecast)
-  const chartData = useMemo(() => {
-    // Get last 6 months of history + 2 months forecast
-    const combined = [];
-    const monthlyExpenses: Record<string, number> = {};
-    const monthlyIncome: Record<string, number> = {};
-
-    allTxns.forEach(e => {
-        const m = e.date.slice(0, 7);
-        if (e.type === 'expense') monthlyExpenses[m] = (monthlyExpenses[m] || 0) + e.amount;
-        else monthlyIncome[m] = (monthlyIncome[m] || 0) + e.amount;
-    });
-
-    // Sort months
-    const allMonths = Array.from(new Set([...Object.keys(monthlyExpenses), ...Object.keys(monthlyIncome)])).sort();
-    const recentMonths = allMonths.slice(-6);
-
-    recentMonths.forEach(month => {
-        combined.push({
-            month,
-            expense: monthlyExpenses[month] || 0,
-            income: monthlyIncome[month] || 0,
-            type: 'Actual'
-        });
-    });
-    
-    // Add Forecast to combined data
-    if(forecastData.length > 0) {
-        forecastData.forEach(f => {
-            combined.push({ 
-                month: f.month, 
-                expense: f.total, 
-                income: null, 
-                type: 'Forecast' 
-            });
-        });
-    }
-    return combined;
-  }, [allTxns, forecastData]);
-
-  const nextMonthForecast = forecastData[0]?.total || 0;
+  const nextMonthForecast = getCombinedForecast(categoryForecasts)[0]?.total || 0;
 
   return (
     <div className="space-y-6">
@@ -166,38 +207,42 @@ export const Dashboard: React.FC = () => {
           {/* Main Chart */}
           <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200 h-96">
             <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-slate-800">Cash Flow Trends</h3>
-                <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">Last 6 Months + Forecast</span>
+                <h3 className="text-lg font-bold text-slate-800">Category Forecast Trends</h3>
+                <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">Recurring Categories + Forecast</span>
             </div>
-            <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <defs>
-                        <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                        </linearGradient>
-                    </defs>
+            {chartData.length === 0 || limitedCategoryKeys.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-slate-500">No recurring category forecast data is available yet.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                     <XAxis 
-                    dataKey="month" 
-                    stroke="#64748b" 
-                    tickMargin={10}
-                    tick={{fontSize: 12}}
+                      dataKey="month" 
+                      stroke="#64748b" 
+                      tickMargin={10}
+                      tick={{fontSize: 12}}
                     />
                     <YAxis stroke="#64748b" tick={{fontSize: 12}} />
                     <Tooltip 
-                        contentStyle={{ backgroundColor: '#1e293b', color: '#fff', border: 'none', borderRadius: '8px' }}
-                        itemStyle={{ color: '#fff' }}
-                        formatter={(val: number) => val ? val.toLocaleString() : '0'}
+                      contentStyle={{ backgroundColor: '#1e293b', color: '#fff', border: 'none', borderRadius: '8px' }}
+                      itemStyle={{ color: '#fff' }}
+                      formatter={(val: number) => val ? val.toLocaleString() : '0'}
                     />
-                    <Area type="monotone" dataKey="income" name="Income" stroke="#10b981" fillOpacity={1} fill="url(#colorIncome)" strokeWidth={2} />
-                    <Area type="monotone" dataKey="expense" name="Expense" stroke="#3b82f6" fillOpacity={1} fill="url(#colorExpense)" strokeWidth={2} />
-                </AreaChart>
-            </ResponsiveContainer>
+                    <Legend verticalAlign="top" height={24} wrapperStyle={{ fontSize: 12 }} />
+                    {limitedCategoryKeys.map((categoryKey, index) => (
+                      <Line
+                        key={categoryKey}
+                        type="monotone"
+                        dataKey={categoryKey}
+                        stroke={[ '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b', '#ec4899', '#14b8a6' ][index % 8]}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                      />
+                    ))}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
 
           {/* Quick Actions & Health */}
@@ -213,6 +258,36 @@ export const Dashboard: React.FC = () => {
                       <div className={`h-2 rounded-full ${health.color.replace('text-', 'bg-')}`} style={{ width: `${health.score}%` }}></div>
                   </div>
                   <p className="text-xs text-slate-400 mt-2">Based on current savings rate and budget adherence.</p>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Ongoing Saving Plans</h3>
+                    <span className="text-xs text-slate-400">{activeSavingPlans.length} active</span>
+                </div>
+                {activeSavingPlans.length === 0 ? (
+                  <div className="text-sm text-slate-500">No active saving plans at the moment.</div>
+                ) : (
+                  <div className="space-y-4">
+                    {activeSavingPlans.map(plan => (
+                      <div key={plan.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="font-semibold text-slate-900">{plan.goalName}</p>
+                            <p className="text-xs text-slate-500">Deadline: {plan.formattedDeadline}</p>
+                          </div>
+                          <p className="text-sm font-semibold text-slate-700">{plan.percentComplete.toFixed(0)}%</p>
+                        </div>
+                        <div className="mt-3 h-2 w-full rounded-full bg-slate-200 overflow-hidden">
+                          <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${plan.percentComplete}%` }}></div>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-2">
+                          {CURRENCY_SYMBOL}{plan.totalSaved.toLocaleString()} saved of {CURRENCY_SYMBOL}{plan.targetAmount.toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Quick Actions Links */}

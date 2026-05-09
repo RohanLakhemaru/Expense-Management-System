@@ -25,6 +25,8 @@
             background: #94a3b8; 
         }
     </style>
+
+
 <script type="importmap">
 {
   "imports": {
@@ -42,9 +44,45 @@
   }
 }
 </script>
+  <script type="module" crossorigin src="/assets/index-CBpkFqrb.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    
+    <!-- Fallback UI if React doesn't load -->
+    <div id="root-fallback" style="display: none; position: fixed; inset: 0; align-items: center; justify-content: center; background-color: #f1f5f9; z-index: 9999;">
+        <div style="background: white; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); max-width: 400px; text-align: center;">
+            <h1 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 1rem; color: #dc2626;">⚠️ Loading Error</h1>
+            <p style="color: #475569; margin-bottom: 1rem;">The application is taking longer than expected to load.</p>
+            <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 1rem;">This usually means:</p>
+            <ul style="text-align: left; font-size: 0.875rem; color: #64748b; margin-bottom: 1rem; list-style: disc; padding-left: 1rem;">
+                <li>Your browser is still loading the application</li>
+                <li>The backend server (XAMPP) might not be running</li>
+                <li>There's a network connectivity issue</li>
+                <li>JavaScript is disabled in your browser</li>
+            </ul>
+            <button onclick="location.reload()" style="background-color: #2563eb; color: white; padding: 0.5rem 1rem; border-radius: 0.375rem; border: none; cursor: pointer; font-weight: 500;">
+                Try Reloading
+            </button>
+            <p style="font-size: 0.75rem; color: #94a3b8; margin-top: 1rem;">
+                Check your browser console (F12) for error messages
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Show fallback after 5 seconds if root is still empty
+        setTimeout(() => {
+            const root = document.getElementById('root');
+            if (!root || root.children.length === 0) {
+                document.getElementById('root-fallback').style.display = 'flex';
+            }
+        }, 5000);
+
+        // Log to console for debugging
+        console.log('📄 Pinnacle Expense Manager Loading...');
+        console.log('🔍 Root element:', document.getElementById('root'));
+    </script>
+
 </body>
 </html>

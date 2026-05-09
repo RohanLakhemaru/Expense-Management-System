@@ -8,7 +8,8 @@ import {
   TagIcon,
   BellIcon,
   CalendarDaysIcon,
-  ArrowRightOnRectangleIcon
+  ArrowRightOnRectangleIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { User } from '../types';
 
@@ -23,6 +24,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout, currentUser }) => {
     { path: '/add', label: 'Transactions', icon: PlusCircleIcon, end: false },
     { path: '/history', label: 'History', icon: CalendarDaysIcon, end: false },
     { path: '/reports', label: 'Reports', icon: DocumentChartBarIcon, end: false },
+    { path: '/savings', label: 'Savings Planner', icon: SparklesIcon, end: false },
+    { path: '/monthly-report', label: 'Monthly Report', icon: CalendarDaysIcon, end: false },
     { path: '/categories', label: 'Manage Categories', icon: TagIcon, end: false },
     { path: '/notifications', label: 'Notifications', icon: BellIcon, end: false },
     { path: '/audit', label: 'Audit Log', icon: ExclamationTriangleIcon, end: false },
